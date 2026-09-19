@@ -1,0 +1,4 @@
+{
+  "files": [],
+  "references": [{ "path": "./libs/config" }, { "path": "./apps/api" }]
+}
