@@ -1,16 +1,17 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { loadEnv } from '@wanderly/config';
+import { loadApiEnv } from '@wanderly/config';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { configureApp } from './app.setup';
 
 async function bootstrap(): Promise<void> {
   // Validate before Nest starts: a bad environment should fail here, loudly.
-  const env = loadEnv();
+  const env = loadApiEnv();
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
-  app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz'] });
+  configureApp(app);
 
   // Lets Postgres/Redis pools close cleanly and in-flight requests finish.
   app.enableShutdownHooks();

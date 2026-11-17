@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
+import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
 
 const CORRELATION_HEADER = 'x-correlation-id';
 
@@ -24,7 +27,10 @@ const CORRELATION_HEADER = 'x-correlation-id';
         transport: process.env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
       },
     }),
+    PrismaModule,
     HealthModule,
+    AuthModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

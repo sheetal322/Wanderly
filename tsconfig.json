@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "./libs/config" }, { "path": "./apps/api" }]
+  "references": [{ "path": "./libs/config" }, { "path": "./libs/db" }, { "path": "./apps/api" }]
 }

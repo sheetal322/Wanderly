@@ -1,0 +1,64 @@
+// One schema for every service. Migrations live next to it in ./migrations and
+// are applied with `npm run db:deploy` (never `migrate dev` outside a laptop).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Every timestamp is timestamptz: these are instants, not wall-clock intent.
+// (events.starts_at_local, in Phase 4, is the one deliberate exception.)
+
+model User {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // citext: uniqueness is case-insensitive in the database itself, not just in
+  // application code that remembered to lowercase.
+  email           String    @unique @db.Citext
+  passwordHash    String    @map("password_hash")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(3)
+  defaultTimezone String    @map("default_timezone")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  refreshTokens           RefreshToken[]
+  emailVerificationTokens EmailVerificationToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  // sha256 of the opaque token. A leaked dump contains no usable tokens.
+  tokenHash String    @unique @map("token_hash")
+  // Every rotation of one login shares a family; reuse of a revoked token
+  // revokes the whole family.
+  familyId  String    @map("family_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}

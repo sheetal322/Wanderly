@@ -29,8 +29,52 @@ export const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 export type NodeEnv = Env['NODE_ENV'];
 
+/**
+ * A PEM key passed base64-encoded, so it fits on one line of a .env file or a
+ * compose environment block. Decoded here so a malformed key fails at boot.
+ */
+const base64Pem = (kind: 'PRIVATE' | 'PUBLIC') =>
+  z
+    .string()
+    .min(1)
+    .transform((value) => Buffer.from(value, 'base64').toString('utf8'))
+    .refine((pem) => pem.includes(`-----BEGIN ${kind} KEY-----`), {
+      message: `must be a base64-encoded PEM ${kind.toLowerCase()} key (run \`npm run keys:generate\`)`,
+    });
+
+/**
+ * The API additionally holds the JWT signing key. Only the API mints tokens, so
+ * no other service's environment should ever contain the private key.
+ */
+export const apiEnvSchema = envSchema.extend({
+  JWT_PRIVATE_KEY: base64Pem('PRIVATE'),
+  JWT_PUBLIC_KEY: base64Pem('PUBLIC'),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  // Where links in emails point (the web app, from Phase 10).
+  APP_URL: z.string().url().default('http://localhost:5173'),
+});
+
+export type ApiEnv = z.infer<typeof apiEnvSchema>;
+
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = envSchema.safeParse(source);
+  return parseEnv(envSchema, source);
+}
+
+export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
+  return parseEnv(apiEnvSchema, source);
+}
+
+function parseEnv<Schema extends z.ZodTypeAny>(
+  schema: Schema,
+  source: NodeJS.ProcessEnv,
+): z.infer<Schema> {
+  const parsed = schema.safeParse(source);
 
   if (!parsed.success) {
     const problems = parsed.error.issues

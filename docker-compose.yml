@@ -89,6 +89,20 @@ services:
       timeout: 3s
       retries: 10
 
+  # One-off: applies pending migrations, then exits. Services that need the
+  # schema wait for it to complete successfully.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: build
+    command: ['npm', 'run', 'db:deploy']
+    environment:
+      DATABASE_URL: postgres://wanderly:wanderly@postgres:5432/wanderly
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -103,11 +117,15 @@ services:
       KAFKA_BROKERS: kafka:29092
       SMTP_HOST: mailpit
       SMTP_PORT: '1025'
+      # Read from .env (`npm run keys:generate`). Left empty if missing so the
+      # rest of the stack still starts; the API then refuses to boot, saying why.
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
     ports:
       - '3000:3000'
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       kafka:
