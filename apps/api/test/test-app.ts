@@ -4,6 +4,7 @@ import { type ApiEnv, loadApiEnv } from '@wanderly/config';
 import type { Response } from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { AccessTokenService } from '../src/auth/access-token.service';
 import { REFRESH_COOKIE } from '../src/auth/refresh-cookie';
 import { ENV } from '../src/config/config.module';
 import { EMAIL_PROVIDER, type EmailMessage, type EmailProvider } from '../src/email/email-provider';
@@ -86,4 +87,19 @@ export function refreshCookieOf(res: Response): string | undefined {
 
 export function withRefreshCookie(token: string): [string, string] {
   return ['Cookie', `${REFRESH_COOKIE}=${token}`];
+}
+
+/**
+ * A verified user and a bearer header for them, created directly rather than
+ * through the sign-up flow (which the auth tests already cover).
+ */
+export async function createSignedInUser(
+  t: TestApp,
+  email: string,
+): Promise<{ userId: string; auth: [string, string] }> {
+  const user = await t.prisma.user.create({
+    data: { email, passwordHash: 'unused', defaultTimezone: 'UTC', emailVerifiedAt: new Date() },
+  });
+  const { accessToken } = t.app.get(AccessTokenService).sign(user.id);
+  return { userId: user.id, auth: ['Authorization', `Bearer ${accessToken}`] };
 }

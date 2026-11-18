@@ -18,6 +18,9 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    // Explicit, because TypeScript 6 stopped loading every @types package by
+    // default. Packages' editor configs add "jest" for their tests.
+    "types": ["node"],
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "resolveJsonModule": true,

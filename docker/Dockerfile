@@ -10,6 +10,7 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY libs/config/package.json libs/config/
 COPY libs/db/package.json libs/db/
+COPY libs/recurrence/package.json libs/recurrence/
 RUN npm ci
 
 # ---------- build: compile the whole workspace ----------
@@ -30,6 +31,7 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY libs/config/package.json libs/config/
 COPY libs/db/package.json libs/db/
+COPY libs/recurrence/package.json libs/recurrence/
 # --omit=optional too: the prisma CLI (and typescript with it) is an optional
 # peer of @prisma/client, which npm keeps under --omit=dev alone. Migrations run
 # from the build stage, so the runtime needs neither (~180 MB).
@@ -48,6 +50,8 @@ COPY --from=build /app/libs/config/dist ./libs/config/dist
 COPY --from=build /app/libs/config/package.json ./libs/config/package.json
 COPY --from=build /app/libs/db/dist ./libs/db/dist
 COPY --from=build /app/libs/db/package.json ./libs/db/package.json
+COPY --from=build /app/libs/recurrence/dist ./libs/recurrence/dist
+COPY --from=build /app/libs/recurrence/package.json ./libs/recurrence/package.json
 COPY --from=build /app/apps/${APP}/dist ./apps/${APP}/dist
 COPY --from=build /app/apps/${APP}/package.json ./apps/${APP}/package.json
 COPY package.json ./

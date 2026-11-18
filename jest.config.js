@@ -6,6 +6,7 @@ const shared = {
   moduleNameMapper: {
     '^@wanderly/config$': '<rootDir>/libs/config/src/index.ts',
     '^@wanderly/db$': '<rootDir>/libs/db/src/index.ts',
+    '^@wanderly/recurrence$': '<rootDir>/libs/recurrence/src/index.ts',
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],

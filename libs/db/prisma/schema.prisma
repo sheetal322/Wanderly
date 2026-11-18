@@ -26,6 +26,7 @@ model User {
 
   refreshTokens           RefreshToken[]
   emailVerificationTokens EmailVerificationToken[]
+  events                  Event[]
 
   @@map("users")
 }
@@ -61,4 +62,38 @@ model EmailVerificationToken {
 
   @@index([userId])
   @@map("email_verification_tokens")
+}
+
+enum EventStatus {
+  ACTIVE
+  PAUSED
+  DELETED
+
+  @@map("event_status")
+}
+
+model Event {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  title         String
+  description   String?
+  // timestamp WITHOUT time zone, deliberately: the user's wall-clock intent
+  // ("9am on my birthday"), read in `timezone`. Instants are derived from it,
+  // so a change to a zone's rules recomputes correctly.
+  startsAtLocal DateTime    @map("starts_at_local") @db.Timestamp(3)
+  timezone      String
+  rrule         String?
+  // Bumped on any change to the schedule, so occurrences computed from an
+  // older version can be recognised as stale.
+  rruleVersion  Int         @default(1) @map("rrule_version")
+  status        EventStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  // Keyset pagination: newest first, id breaks ties.
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("events")
 }

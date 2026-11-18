@@ -14,14 +14,15 @@ The full system design — including the alternatives that were rejected and why
 
 ## Status
 
-Built in phases; each phase produces something demonstrable.
+Built in phases; each phase produces something demonstrable. What comes next is decided case by
+case rather than strictly in this order.
 
 | Phase                                                                                    | Status  |
 | ---------------------------------------------------------------------------------------- | ------- |
 | 1. Foundations — monorepo, Docker Compose, NestJS skeleton, health checks, CI            | ✅ Done |
 | 2. Auth — register/verify/login/refresh/logout, Argon2id, rotation + reuse detection     | ✅ Done |
-| 3. `libs/recurrence` — pure RRULE + timezone expansion                                   | ⬜ Next |
-| 4. Events CRUD — validation, ownership scoping, occurrence preview                       | ⬜      |
+| 3. `libs/recurrence` — pure RRULE + timezone expansion                                   | ✅ Done |
+| 4. Events CRUD — validation, ownership scoping, occurrence preview                       | ✅ Done |
 | 5. Materializer — horizon expansion, idempotent upsert, version invalidation             | ⬜      |
 | 6. Dispatcher + Outbox + Relay — `SKIP LOCKED`, leader election                          | ⬜      |
 | 7. Email worker — idempotency, templates, `delivery_attempts`                            | ⬜      |
@@ -84,6 +85,29 @@ curl localhost:3000/api/v1/me -H 'Authorization: Bearer <accessToken>'
 curl -b cookies.txt -c cookies.txt -X POST localhost:3000/api/v1/auth/refresh   # rotates the cookie
 ```
 
+### Events
+
+All event routes need `Authorization: Bearer <accessToken>`.
+
+```bash
+# Every other Tuesday at 18:00 Berlin time
+curl -X POST localhost:3000/api/v1/events -H 'Authorization: Bearer <accessToken>' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Groceries","startsAtLocal":"2026-12-01T18:00","timezone":"Europe/Berlin","rrule":"FREQ=WEEKLY;BYDAY=TU;INTERVAL=2"}'
+
+curl 'localhost:3000/api/v1/events/<id>/occurrences?limit=5' -H 'Authorization: Bearer <accessToken>'
+```
+
+| Route                                       | What it does                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| `POST /api/v1/events`                       | Create. `rrule` omitted or `null` makes a one-off event             |
+| `GET /api/v1/events?limit=&cursor=&status=` | List, newest first, cursor-paginated; `status` is `ACTIVE`/`PAUSED` |
+| `GET /api/v1/events/:id`                    | One event                                                           |
+| `PATCH /api/v1/events/:id`                  | Partial update; `rrule: null` turns it into a one-off               |
+| `POST /api/v1/events/:id/pause`, `/resume`  | Pause or resume                                                     |
+| `DELETE /api/v1/events/:id`                 | Soft delete                                                         |
+| `GET /api/v1/events/:id/occurrences`        | Preview: next `limit` (default 10), or `from`/`to` (max 366 days)   |
+
 ## Layout
 
 ```
@@ -91,6 +115,7 @@ apps/api        NestJS HTTP API
 apps/api/test   integration test harness (scratch database, test app factory)
 libs/config     environment schema, validated once at boot by every service
 libs/db         Prisma schema, migrations and generated client, shared by every service
+libs/recurrence RRULE + time zone expansion: pure, no I/O, shared by the API and the scheduler
 docker/         one multi-stage Dockerfile; APP build arg selects the entrypoint
 scripts/        developer tooling (JWT key generation)
 ```
@@ -98,6 +123,12 @@ scripts/        developer tooling (JWT key generation)
 Four backend services (`api`, `scheduler`, `worker`, `relay`) will share this codebase and build,
 because they have different scaling and failure characteristics but no reason to be versioned
 separately. Only `api` exists so far.
+
+TypeScript configs come in pairs per package: `tsconfig.json` covers source _and_ tests with the
+Jest types named explicitly (what the editor and `npm run typecheck` use), and
+`tsconfig.build.json` compiles source only into `dist/`. TypeScript 6, which VS Code bundles, no
+longer loads every `@types` package by default, so test files outside any project lost
+`describe`/`expect`; this layout also means `npm run typecheck` now type-checks the tests.
 
 ## Decisions made in Phase 1
 
@@ -177,6 +208,75 @@ design's "one-off task before the service update". The runtime image omits the P
 installs it as an optional peer of `@prisma/client` even under `--omit=dev`, so the runtime stage
 also passes `--omit=optional` (651 MB → 446 MB).
 
+## Decisions made in Phase 3
+
+`libs/recurrence` turns an event (a wall-clock start, an IANA zone, an optional RRULE) into the
+instants its notifications fire at. It does no I/O and was built against unit tests alone, as
+the design asks: the occurrence preview endpoint and the materializer will both call it, so the
+preview cannot drift from what is actually sent.
+
+**Recurrence is computed in local wall-clock time, never in UTC.** The rule is expanded on
+"floating" dates (wall-clock fields with no zone), and only then is each result converted to an
+instant using the zone's rules on that date. A 09:00 Berlin reminder is 08:00Z in winter and
+07:00Z in summer, and stays 09:00 local across both transitions.
+
+**The written answers the design asked for**, each a test in
+`libs/recurrence/src/recurrence.spec.ts`:
+
+| Case                                     | Answer                                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| 02:30 on a spring-forward day            | Fires once, shifted forward by the gap: 03:30. 30-min gaps (Lord Howe) shift 30 min |
+| 01:30 on a fall-back day (happens twice) | Fires **once**, at the first (daylight-time) instant                                |
+| `FREQ=MONTHLY;BYMONTHDAY=31`             | Skips months without a 31st. "Last day of the month" is `BYMONTHDAY=-1`             |
+| Birthday on Feb 29, `FREQ=YEARLY`        | Leap years only. For every year, use `BYMONTH=2;BYMONTHDAY=-1` (Feb 28 or 29)       |
+| Start that the rule would not produce    | Not an occurrence: "every Monday" created on a Thursday starts the next Monday      |
+
+The first two follow RFC 5545 §3.3.5. Each occurrence also reports how it was resolved
+(`exact`, `shifted-forward` or `earlier-of-two`), so a UI can explain a shifted reminder.
+
+**`UNTIL` is converted to the event's zone by hand.** The rrule library would compare a UTC
+`UNTIL` directly against floating wall-clock dates, which is wrong by the zone's offset: a
+Berlin rule with `UNTIL=…T070000Z` would drop the 09:00 occurrence it is meant to include. A
+date-only `UNTIL` means the whole of that local day.
+
+**Validation doubles as abuse prevention.** Rules are rejected if they are sub-daily
+(`SECONDLY`/`MINUTELY`/`HOURLY`), would produce more than 1,500 occurrences a year (so `DAILY`
+plus a long `BYHOUR` list cannot sneak past the frequency check), never produce an occurrence
+(`BYMONTH=2;BYMONTHDAY=30`, `COUNT=0`, an `UNTIL` before the start), or embed their own
+`DTSTART`/`TZID`. Time zones must be IANA names; offsets like `+01:00` are rejected.
+
+**The tests were checked by breaking the code.** Picking the later instant in an overlap,
+shifting a gap backwards, and comparing `UNTIL` naively each make tests fail. Expected instants
+are worked out by hand from published 2026 DST dates, not taken from the code's own output.
+
+## Decisions made for events
+
+**Ownership is enforced in the query, not after it.** Every read and write filters on `user_id`
+in the `WHERE` clause; nothing loads by id and then checks the owner. Another user's event is a
+`404`, not a `403`, so ids cannot be probed. An integration test fails if the scoping is removed.
+
+**The start is stored as `timestamp` without time zone** (`starts_at_local`), the wall-clock
+intent, next to its IANA zone. Instants are always derived, never stored for the event itself.
+
+**The start, zone and rule are validated together** by `libs/recurrence`, on create and on the
+merged result of a `PATCH`, so a partial edit cannot leave an event with an invalid schedule.
+
+**`rrule_version` is bumped whenever the schedule actually changes** (not on a title edit, and
+not on a no-op edit). Nothing reads it yet; it is in place so that occurrences computed from an
+older schedule can later be recognised as stale.
+
+**Cursor pagination, not offset**: `(created_at, id)` keyset, backed by an index. Stable under
+concurrent inserts.
+
+**Delete is soft** (`status = DELETED`): the row stays for history, but the event disappears from
+every route.
+
+**The preview reuses the exact expansion code** a future scheduler would, so what the preview
+shows cannot drift from what would be sent.
+
+Not built yet: reminders (`event_reminders`), sending notifications, and the `Idempotency-Key`
+header on `POST`.
+
 ### Deviations from the original design document
 
 - **Kafka image:** the design specified `bitnami/kafka:3.7`. Bitnami retired its free public image
@@ -194,5 +294,7 @@ also passes `--omit=optional` (651 MB → 446 MB).
   minutes; the design's Redis access-token denylist was deliberately left out to keep verification
   stateless.
 - **Auth rate limiting is deferred to Phase 12** (hardening), as in the build order.
+- **Recurrence rejects sub-daily frequencies entirely**, not just `SECONDLY`: hourly reminders
+  for a personal event are not a use case worth 8,760 jobs a year per reminder.
 
 Everything in the local stack is free and open source.
