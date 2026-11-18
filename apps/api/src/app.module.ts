@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from './config/config.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
@@ -31,6 +32,7 @@ const CORRELATION_HEADER = 'x-correlation-id';
     HealthModule,
     AuthModule,
     UsersModule,
+    EventsModule,
   ],
 })
 export class AppModule {}

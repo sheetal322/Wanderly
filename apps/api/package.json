@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build tsconfig.build.json",
     "start": "node dist/main.js",
     "start:dev": "node --env-file=../../.env --watch -r ts-node/register src/main.ts"
   },
@@ -15,6 +15,7 @@
     "@nestjs/terminus": "^10.2.3",
     "@wanderly/config": "*",
     "@wanderly/db": "*",
+    "@wanderly/recurrence": "*",
     "argon2": "^0.45.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",

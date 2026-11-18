@@ -1,0 +1,14 @@
+{
+  "name": "@wanderly/recurrence",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "devDependencies": {
+    "@types/luxon": "^3.7.6"
+  },
+  "dependencies": {
+    "luxon": "^3.7.2",
+    "rrule": "^2.8.1"
+  }
+}

@@ -12,7 +12,8 @@
   "scripts": {
     "build": "npm run db:generate && tsc --build",
     "clean": "tsc --build --clean",
-    "typecheck": "npm run db:generate && tsc --build --pretty",
+    "typecheck": "npm run db:generate && tsc --build --pretty && npm run typecheck:tests",
+    "typecheck:tests": "tsc --noEmit --pretty -p libs/config && tsc --noEmit --pretty -p libs/db && tsc --noEmit --pretty -p libs/recurrence && tsc --noEmit --pretty -p apps/api",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.int-spec.ts"],
+  "references": [
+    { "path": "../../libs/config/tsconfig.build.json" },
+    { "path": "../../libs/db/tsconfig.build.json" },
+    { "path": "../../libs/recurrence/tsconfig.build.json" }
+  ]
+}
